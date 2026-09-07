@@ -9,31 +9,59 @@
 
 // #define SRC_DIR ${CMAKE_SOURCE_DIR}
 #define BUFFER_SIZE 1024
+#define JRE 0
+#define JWR 1
+#define JRW 2
 
-int open_file(const char* fpath, char** map, size_t* size_out, int* fdescriptor)
+int make_flags(int out[], int access) {
+  if (access == JRE) {
+    out[0] = O_RDONLY;
+    out[1] = PROT_READ;
+    return 0;
+  }
+  if (access == JWR) {
+    out[0] = O_WRONLY;
+    out[1] = PROT_WRITE;
+    return 0;
+  }
+  if (access == JRW) {
+    out[0] = O_RDWR;
+    out[1] = PROT_READ | PROT_WRITE;
+    return 0;
+  }
+  return -1;
+}
+
+int open_file(const char* fpath, char** map, size_t* size_out, int* fdescriptor, int access)
 {
-  *fdescriptor = open(fpath, O_RDWR);
+  int flags[2] = {0, 0};
+  if (make_flags(flags, access) == -1) {
+    perror("invalid flags\n");
+    return -1;
+  }
+  *fdescriptor = open(fpath, flags[0]);
   if (*fdescriptor == -1) {
     perror("could not open file\n");
-    return 1;
+    return -1;
   }
   struct stat stat_buffer;
   if (fstat(*fdescriptor, &stat_buffer) == -1) { 
     perror("couldnt get file size\n"); 
     close(*fdescriptor);
-    return 1;
+    return -1;
   }
 
   if (stat_buffer.st_size == 0) {
     close(*fdescriptor);
+    perror("warning --- empty file\n");
     return 0;
   }
-  *map = (char*)mmap(NULL, stat_buffer.st_size, PROT_READ | PROT_WRITE, MAP_SHARED, *fdescriptor, 0);
+  *map = (char*)mmap(NULL, stat_buffer.st_size, flags[1], MAP_SHARED, *fdescriptor, 0);
 
   if (map == MAP_FAILED) {
     perror("mmap failed");
     close(*fdescriptor);
-    return 0;
+    return -1;
   }
 
   *size_out = stat_buffer.st_size;
